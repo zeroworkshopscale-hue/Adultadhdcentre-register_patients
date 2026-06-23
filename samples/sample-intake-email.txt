@@ -1,0 +1,15 @@
+Subject: New Assessment Request - Therapist-Supported ADHD Assessment
+Date: Mon, 22 Jun 2026 09:14:00 -0700
+From: intake@adultadhdcentre.com
+
+Patient Name: Jane Doe
+Email: jane.doe@example.com
+Phone: (604) 555-0142
+Date of Birth: 1990-05-14
+Address: 123 Main St, Vancouver, British Columbia
+Payment ID: PAY-20260622-0042
+
+Hello,
+
+Please process a new therapist-supported ADHD assessment request for the
+patient above. Thank you.

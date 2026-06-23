@@ -1,0 +1,54 @@
+ADHD INTAKE PROCESSING APP — SETUP (Windows)
+=============================================
+
+You only do steps 1-2 ONCE. After that, just double-click the desktop icon.
+
+------------------------------------------------------------
+STEP 1 — Install Node.js (one time, ~3 minutes)
+------------------------------------------------------------
+1. Go to:  https://nodejs.org
+2. Click the big green "LTS" download button.
+3. Open the downloaded file and click "Next" through the installer
+   (accept the defaults). Finish.
+
+(If Node.js is already installed on this computer, skip Step 1.)
+
+------------------------------------------------------------
+STEP 2 — Unzip this folder
+------------------------------------------------------------
+1. Right-click the .zip file you received  ->  "Extract All..."  ->  Extract.
+2. Open the extracted folder.
+
+------------------------------------------------------------
+STEP 3 — Start the app
+------------------------------------------------------------
+1. Double-click:   Start ADHD App        (the file with the red icon)
+2. The FIRST time, a small message says it's setting up (a few minutes).
+   No windows appear — that's intended. Just wait.
+3. Your web browser opens automatically at:  http://localhost:8080
+4. A "ADHD Intake App" icon also appears on the Desktop — use that next time.
+
+------------------------------------------------------------
+USING THE APP
+------------------------------------------------------------
+1. In the "Connect to OSCAR" box, type your OSCAR username and password,
+   then click "Connect". (Wait ~10-15 seconds the first time.)
+2. Drag the patient intake emails onto "Drop Emails Here".
+3. Watch them get registered / matched, and the dashboards fill in.
+
+------------------------------------------------------------
+TO STOP THE APP
+------------------------------------------------------------
+Double-click:  Stop ADHD App
+(Or just restart your computer — it won't start on its own.)
+
+------------------------------------------------------------
+TROUBLESHOOTING
+------------------------------------------------------------
+- Nothing happens when you double-click "Start ADHD App":
+  Double-click "Start ADHD App.bat" instead — it shows what's happening
+  in a window, so you can read any error message.
+- Browser shows nothing: wait 30 seconds (first start is slow), then
+  open your browser and go to  http://localhost:8080
+- "Node.js is not installed": do Step 1, then try again.
+- Still stuck: open "last-run.log" in this folder and send it over.
