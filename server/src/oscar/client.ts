@@ -74,6 +74,13 @@ function splitAddress(
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+  // Drop a trailing province segment (e.g. "...Torbay, Newfoundland") so it
+  // doesn't end up in the city field — the province dropdown is set separately.
+  if (segs.length >= 2 && provinceName) {
+    const last = segs[segs.length - 1].toLowerCase();
+    const prov = provinceName.toLowerCase();
+    if (prov.includes(last) || last.includes(prov)) segs.pop();
+  }
   if (segs.length >= 2) {
     return { street: segs[0], city: segs.slice(1).join(", "), postal };
   }

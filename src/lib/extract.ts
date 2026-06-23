@@ -111,7 +111,7 @@ function extractAddress(text: string): string {
   // Address label, either inline ("Address: 1 Main St") or on its own line
   // ("Street Address" with the value on the following lines).
   const labelRe =
-    /^[ \t]*(?:street\s*address|mailing\s*address|home\s*address|address)\b[ \t]*[:\-]?[ \t]*(.*)$/i;
+    /^[ \t]*(?:patient\s*address|street\s*address|mailing\s*address|home\s*address|address)\b[ \t]*[:\-]?[ \t]*(.*)$/i;
   const colonField = /^[ \t]*[A-Za-z][A-Za-z0-9 .'/\-]{0,40}:\s/;
   // Other intake fields that appear as a bare label on their own line — stop
   // collecting the address when one of these starts the next line.
@@ -240,8 +240,22 @@ export function initials(first: string, last: string): string {
 
 export function classify(subject: string): Assessment {
   const s = subject.toLowerCase();
+  // Therapist-supported (both clinics). Checked first so "assessment" in the
+  // private patterns below can't capture a therapist-supported subject.
+  //   Adult ADHD Centre:        "... Therapist-Supported ADHD Assessment"
+  //   ADHD Centre for Women:    "New submission from Therapist Supported ADHD Assessment"
   if (s.includes("therapist-supported") || s.includes("therapist supported")) return "therapist";
-  if (s.includes("new assessment request") || s.includes("assessment request")) return "private";
+  // Regular / private (both clinics).
+  //   Adult ADHD Centre:        "New Assessment Request ..."
+  //   ADHD Centre for Women:    "New submission from Private ADHD Assessment"
+  if (
+    s.includes("new assessment request") ||
+    s.includes("assessment request") ||
+    s.includes("private adhd assessment") ||
+    s.includes("new submission from private")
+  ) {
+    return "private";
+  }
   return null;
 }
 
@@ -295,6 +309,12 @@ export function extractFromEmail(raw: string): Extracted {
   if (!first || !last) {
     const full =
       grab(/(?:patient\s*name|client\s*name|full\s*name|name)\s*[:\-]\s*([A-Za-z'\- ]{3,60})/i, text) ||
+      // "Patient Legal Name" / "Patient Name" label on its own line, value on
+      // the next line (ADHD Centre for Women format).
+      grab(
+        /(?:patient\s*legal\s*name|legal\s*name|patient\s*name|full\s*name)[ \t]*[:\-]?[ \t]*\r?\n[ \t]*([A-Za-z][A-Za-z'.\- ]{2,60})/i,
+        text,
+      ) ||
       nameFromSubject(subject);
     if (full) {
       const parts = full.trim().split(/\s+/);
