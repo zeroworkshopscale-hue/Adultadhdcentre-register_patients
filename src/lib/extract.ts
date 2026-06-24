@@ -55,7 +55,7 @@ function isoDate(y: string | number, mo: string | number, d: string | number): s
 
 // Compact gender hints — staff can override in UI.
 const MALE = new Set(
-  "john michael david james robert william richard thomas mark paul daniel matthew anthony donald steven andrew kenneth joshua kevin brian george edward ronald timothy jason jeffrey ryan jacob gary nicholas eric jonathan stephen larry justin scott brandon benjamin samuel gregory frank alexander patrick raymond jack dennis jerry tyler aaron henry adam douglas peter nathan zachary kyle walter ethan jeremy harold christian sean austin noah jordan ali ahmed mohammed muhammad omar hassan ibrahim liam oliver elijah lucas mason logan aiden jackson levi sebastian mateo jayden leo theodore owen hudson grayson carter wyatt julian luke gabriel isaac lincoln asher caleb hunter eli connor santiago jeremiah cameron ezra colton cooper josiah xavier jose ian dylan axel miles jaxon nolan declan cole carson nathaniel jonah evan max micah greyson maxwell kai brody wesley emmett bennett calvin felix victor marcus harrison theo".split(/\s+/),
+  "john michael david james robert william richard thomas mark paul daniel matthew anthony donald steven andrew kenneth joshua kevin brian george edward ronald timothy jason jeffrey ryan jacob gary nicholas eric jonathan stephen larry justin scott brandon benjamin samuel gregory frank alexander patrick raymond jack dennis jerry tyler aaron henry adam douglas peter nathan zachary kyle walter ethan jeremy harold christian sean austin noah jordan ali ahmed mohammed muhammad omar hassan ibrahim liam oliver elijah lucas mason logan aiden jackson levi sebastian mateo jayden leo theodore owen hudson grayson carter wyatt julian luke gabriel isaac lincoln asher caleb hunter eli connor santiago jeremiah cameron ezra colton cooper josiah xavier jose ian dylan axel miles jaxon nolan declan cole carson nathaniel jonah evan max micah greyson maxwell kai brody wesley emmett bennett calvin felix victor marcus harrison theo luke george blake wade dale kobe wayne dwayne clyde pierre andre jesse lance dave steve pete jude zane nate gabe tate cade tony rory cody bobby ricky tommy jimmy danny johnny terry barry corey rudy troy roy ray jay clay hugo diego pablo pedro marco enzo bruno nico rene andres luca cosmo".split(/\s+/),
 );
 const FEMALE = new Set(
   "mary patricia jennifer linda elizabeth barbara susan jessica sarah karen lisa nancy betty helen sandra donna carol ruth sharon michelle laura sarah kimberly deborah dorothy amy angela ashley brenda emma olivia cynthia marie janet catherine frances christine samantha debra rachel carolyn janet virginia maria heather diane julie joyce victoria kelly christina joan evelyn lauren judith megan cheryl andrea hannah jacqueline martha gloria teresa sara janice julia kathryn grace rose amber denise danielle marilyn beverly charlotte natalie diana brittany theresa kayla alexis lori tiffany jasmine titania chloe sophia ava mia isabella amelia ainslie harper abigail emily ella scarlett penelope layla lillian nora zoey mila aurora lily addison eleanor luna savannah brooklyn leah zoe stella hazel ellie paisley audrey skylar violet claire bella aaliyah gabriella anna allison gianna serenity aria kennedy ivy aubrey maya josephine ariana naomi vivian sadie willow isla nova emilia everly delilah autumn quinn ruby clara genevieve elise margaret rosalie eliza juliana fiona daphne sienna elsie georgia eloise maeve cora iris adeline kehlani".split(/\s+/),
@@ -222,16 +222,23 @@ export function detectProvince(
 }
 
 export function guessGender(first: string): "M" | "F" | "U" {
-  const n = first.toLowerCase().trim();
-  if (!n) return "U";
+  // First token, letters only (e.g. "Mary-Anne" -> "mary").
+  const n = first.toLowerCase().match(/[a-z]+/)?.[0] ?? "";
+  if (!n) return "U"; // truly no name -> the record goes to manual review anyway
   if (FEMALE.has(n)) return "F";
   if (MALE.has(n)) return "M";
-  // Conservative fallback for names not in the lists: endings that are strongly
-  // female and rarely male. Anything still ambiguous stays "U" (staff set it).
-  if (/(?:elle|ette|lyn|lynn|ynn|ina|issa|ella|anna|enna|iana|een|ique|ah|lee)$/.test(n)) {
+  // Names not in the lists: make a best guess from the ending and never leave
+  // it "Undefined" (the email never states gender, so the app must decide).
+  // Female-leaning endings.
+  if (
+    /(?:a|ah|ia|ya|ie|ee|elle|ette|lyn|lynn|ynn|ina|ena|ella|anna|enna|issa|essa|een|ique|rine|leen)$/.test(n)
+  ) {
     return "F";
   }
-  return "U";
+  // Male-leaning endings.
+  if (/(?:o|us|os|as|um|son|ton|don|win|ius|rew|aan|eed)$/.test(n)) return "M";
+  // Final tie-break: a vowel ending leans female, a consonant leans male.
+  return /[eiy]$/.test(n) ? "F" : "M";
 }
 
 export function initials(first: string, last: string): string {
@@ -291,8 +298,10 @@ export function extractFromEmail(raw: string): Extracted {
     grab(/(?:phone|tel|telephone|mobile|cell)\s*(?:number)?\s*[:\-]\s*([+\d().\s-]{7,})/i, text) ||
     grab(/(\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/i, text);
 
+  // The value must start with a digit (real DOBs do) so a "born" / "dob"
+  // substring inside an address word (e.g. "Osborne") can't capture address text.
   const dobRaw =
-    grab(/(?:date\s*of\s*birth|d\.?o\.?b\.?|birth\s*date|born)\s*[:\-]?\s*([A-Za-z0-9 ,/.\-]{6,30})/i, text);
+    grab(/(?:date\s*of\s*birth|d\.?o\.?b\.?|birth\s*date|\bborn\b)\s*[:\-]?\s*(\d[\d/.\- ]{5,13})/i, text);
 
   const paymentId =
     grab(/(?:transaction\s*id|payment\s*id|payment\s*reference|order\s*(?:id|number|no\.?)|invoice\s*(?:id|number)|reference\s*(?:id|number)?)\s*[:#\-]\s*([A-Za-z0-9_\-]{4,})/i, text) ||

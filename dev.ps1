@@ -59,8 +59,10 @@ if (-not (Test-Path (Join-Path $root ".env"))) {
 }
 
 # Start both servers hidden and detached (node is a console app -> no window).
+# The backend's output goes to backend.log so any OSCAR error is recoverable
+# even though no window is shown.
 $env:PLAYWRIGHT_HEADLESS = "true"
-Start-Process node -ArgumentList "--import", "tsx", "src/index.ts" -WorkingDirectory $server -WindowStyle Hidden
+Start-Process node -ArgumentList "--import", "tsx", "src/index.ts" -WorkingDirectory $server -WindowStyle Hidden -RedirectStandardError (Join-Path $root "backend.log") -RedirectStandardOutput (Join-Path $root "backend-info.log")
 Start-Process node -ArgumentList "node_modules\vite\bin\vite.js", "dev" -WorkingDirectory $root -WindowStyle Hidden
 
 # Open the app once the frontend has had time to come up.

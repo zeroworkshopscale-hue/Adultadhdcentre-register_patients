@@ -25,7 +25,7 @@ export const config = {
   /** "chromium" (bundled) or "chrome" (system Google Chrome). */
   browserChannel: (process.env.BROWSER_CHANNEL ?? "chromium").trim().toLowerCase(),
   sessionIdleMs: int(process.env.SESSION_IDLE_MINUTES, 20) * 60_000,
-  oscarTimeoutMs: int(process.env.OSCAR_TIMEOUT_MS, 30_000),
+  oscarTimeoutMs: int(process.env.OSCAR_TIMEOUT_MS, 45_000),
 } as const;
 
 export type AppConfig = typeof config;
