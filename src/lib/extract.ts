@@ -76,6 +76,8 @@ export interface Extracted {
   subject: string;
   assessment: Assessment;
   gender: "M" | "F" | "U";
+  /** True for ADHD Centre for Women orders (their booking alert gets " - Women"). */
+  womensClinic: boolean;
   /** True when a DOB was present but not in an accepted format → Manual Review. */
   dobAmbiguous: boolean;
   missing: string[];
@@ -317,11 +319,14 @@ export function extractFromEmail(raw: string): Extracted {
   let last = grab(/(?:last\s*name|surname|family\s*name)\s*[:\-]\s*([A-Za-z' \-]+)/i, text);
   if (!first || !last) {
     const full =
-      grab(/(?:patient\s*name|client\s*name|full\s*name|name)\s*[:\-]\s*([A-Za-z'\- ]{3,60})/i, text) ||
-      // "Patient Legal Name" / "Patient Name" label on its own line, value on
-      // the next line (ADHD Centre for Women format).
+      // Inline "Name: value". Horizontal-space-only inside the label so it can't
+      // span lines (e.g. "...same as Patient" + "Name" two lines down).
+      grab(/(?:patient[ \t]*name|client[ \t]*name|full[ \t]*name|\bname)[ \t]*[:\-][ \t]*([A-Za-z'\- ]{3,60})/i, text) ||
+      // Label on its own line, value on the next line. The FIRST match wins,
+      // which is the Patient Information section (always before any Billing /
+      // Payer section), so a payer's name is never used as the patient's.
       grab(
-        /(?:patient\s*legal\s*name|legal\s*name|patient\s*name|full\s*name)[ \t]*[:\-]?[ \t]*\r?\n[ \t]*([A-Za-z][A-Za-z'.\- ]{2,60})/i,
+        /(?:patient[ \t]*legal[ \t]*name|legal[ \t]*name|patient[ \t]*name|full[ \t]*name|\bname)[ \t]*[:\-]?[ \t]*\r?\n[ \t]*([A-Za-z][A-Za-z'.\- ]{2,60})/i,
         text,
       ) ||
       nameFromSubject(subject);
@@ -343,6 +348,11 @@ export function extractFromEmail(raw: string): Extracted {
   if (!province) province = detectProvince(text, { abbrev: "upperOnly" });
 
   const assessment = classify(subject);
+  // ADHD Centre for Women orders: identified by their distinct subject
+  // ("New submission from ...") or the sending clinic.
+  const womensClinic =
+    /new\s*submission\s*from/i.test(subject) ||
+    /adhd\s*centre\s*for\s*women|support\s*for\s*adhd\s*women|adhdcentreforwomen/i.test(text);
   const phone = formatPhone(phoneRaw);
   const { dob, ambiguous: dobAmbiguous } = parseDob(dobRaw);
   const emailDate = formatEmailDate(emailDateRaw);
@@ -370,6 +380,7 @@ export function extractFromEmail(raw: string): Extracted {
     subject: subject.trim(),
     assessment,
     gender,
+    womensClinic,
     dobAmbiguous: Boolean(dobRaw && dobAmbiguous),
     missing,
   };

@@ -87,9 +87,10 @@ function uid(): string {
 }
 
 // OSCAR Booking Alert text, set on the chart from the assessment type.
-function alertFor(assessment: Extracted["assessment"]): string {
-  if (assessment === "therapist") return "Therapist Supported ADHD Assessment";
-  if (assessment === "private") return "Private ADHD";
+function alertFor(assessment: Extracted["assessment"], womensClinic: boolean): string {
+  const suffix = womensClinic ? " - Women" : "";
+  if (assessment === "therapist") return `Therapist Supported ADHD Assessment${suffix}`;
+  if (assessment === "private") return `Private ADHD${suffix}`;
   return "";
 }
 
@@ -118,7 +119,7 @@ function runEmail(
       dob: ext.dob || undefined,
       province: ext.province || undefined,
       sex: ext.gender, // name-based guess (M/F/U) → Sex + Gender Identity
-      alert: alertFor(ext.assessment) || undefined,
+      alert: alertFor(ext.assessment, ext.womensClinic) || undefined,
       address: ext.address || undefined,
     })
       .then(({ jobId }) => {

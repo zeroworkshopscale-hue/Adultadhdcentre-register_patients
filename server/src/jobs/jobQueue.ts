@@ -77,17 +77,24 @@ class JobQueue {
         const search = await client.searchByEmail(input.email);
 
         if (search.outcome === "found") {
-          this.push(job, {
-            kind: "patient_found",
-            step: `Patient already in OSCAR (#${search.patient.demographicNo})`,
-            demographicNo: search.patient.demographicNo,
-            patient: search.patient,
-          });
-          return {
-            outcome: "found",
-            demographicNo: search.patient.demographicNo,
-            patient: search.patient,
-          } as JobResult;
+          // A shared family email can match a sibling, so a found-by-email chart
+          // only counts as THIS patient when the name (or DOB) also lines up.
+          const c = search.patient;
+          const norm = (s: string) => (s || "").trim().toLowerCase();
+          const sameLast = norm(c.lastName) === norm(input.lastName);
+          const sameFirst = norm(c.firstName) === norm(input.firstName);
+          const sameDob = Boolean(c.dob && input.dob && c.dob === input.dob);
+          if (sameLast && (sameFirst || sameDob)) {
+            this.push(job, {
+              kind: "patient_found",
+              step: `Patient already in OSCAR (#${c.demographicNo})`,
+              demographicNo: c.demographicNo,
+              patient: c,
+            });
+            return { outcome: "found", demographicNo: c.demographicNo, patient: c } as JobResult;
+          }
+          // Email matched a different person — fall through to the name+DOB
+          // duplicate guard below, then register this patient.
         }
 
         if (search.outcome === "multiple") {
