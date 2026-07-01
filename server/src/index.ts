@@ -13,6 +13,7 @@ import { closeBrowser } from "./oscar/browser.js";
 import { authRouter } from "./routes/auth.js";
 import { intakeRouter } from "./routes/intake.js";
 import { parseRouter } from "./routes/parse.js";
+import { emailRouter } from "./routes/email.js";
 
 const app = express();
 
@@ -29,6 +30,7 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 app.use("/api/oscar", authRouter);
 app.use("/api/intake", intakeRouter);
 app.use("/api/parse", parseRouter);
+app.use("/api/email", emailRouter);
 
 sessionManager.start();
 

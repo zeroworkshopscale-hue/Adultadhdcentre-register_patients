@@ -166,3 +166,11 @@ export function streamIntake(
     es.close();
   };
 }
+
+export async function sendAcknowledgementDraft(input: {
+  toEmail: string;
+  firstName: string;
+  assessment: "private" | "therapist";
+}): Promise<void> {
+  await postJson<{ ok: boolean }>("/api/email/draft", input);
+}

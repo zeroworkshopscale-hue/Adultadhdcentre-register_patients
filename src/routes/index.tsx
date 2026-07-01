@@ -7,6 +7,7 @@ import {
   parseMsg,
   submitIntake,
   streamIntake,
+  sendAcknowledgementDraft,
   type JobResult,
   type OscarSession,
 } from "@/lib/oscarService";
@@ -510,6 +511,16 @@ function Index() {
             onClear={clearAll}
             onDeleteRow={deleteRow}
             copyAllLabel="Copy All Rows"
+            onSendEmail={async (r) => {
+              if (!r.data) return;
+              const { email, firstName, assessment, womensClinic } = r.data;
+              if (womensClinic || !assessment || !email) return;
+              await sendAcknowledgementDraft({
+                toEmail: email,
+                firstName,
+                assessment,
+              });
+            }}
           />
         </section>
       </main>
@@ -730,6 +741,7 @@ function DashboardCard({
   onClear,
   onDeleteRow,
   copyAllLabel,
+  onSendEmail,
 }: {
   title: string;
   subtitle: string;
@@ -741,9 +753,13 @@ function DashboardCard({
   onClear: () => void;
   onDeleteRow: (id: string) => void;
   copyAllLabel: string;
+  onSendEmail?: (r: BatchItem) => Promise<void>;
 }) {
   const [copiedRow, setCopiedRow] = useState<string | null>(null);
   const [copiedAll, setCopiedAll] = useState(false);
+  const [sentRow, setSentRow] = useState<string | null>(null);
+  const [sendingRow, setSendingRow] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   const copyRow = async (r: BatchItem) => {
     await navigator.clipboard.writeText((getCopyRow ?? getRow)(r).join("\t"));
@@ -829,6 +845,27 @@ function DashboardCard({
                         >
                           {copiedRow === r.id ? "Copied" : "Copy Row"}
                         </button>
+                        {onSendEmail && r.data && !r.data.womensClinic && r.data.assessment && r.data.email && (
+                          <button
+                            disabled={sendingRow === r.id}
+                            onClick={async () => {
+                              setSendError(null);
+                              setSendingRow(r.id);
+                              try {
+                                await onSendEmail(r);
+                                setSentRow(r.id);
+                                setTimeout(() => setSentRow((s) => s === r.id ? null : s), 3000);
+                              } catch (e: any) {
+                                setSendError(e?.message ?? "Failed to open email draft.");
+                              } finally {
+                                setSendingRow(null);
+                              }
+                            }}
+                            className="rounded border px-2 py-1 text-xs bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                          >
+                            {sendingRow === r.id ? "Opening…" : sentRow === r.id ? "Draft opened ✓" : "Send Email"}
+                          </button>
+                        )}
                         <button
                           onClick={() => onDeleteRow(r.id)}
                           className="rounded border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-destructive"
@@ -837,6 +874,9 @@ function DashboardCard({
                           Delete
                         </button>
                       </div>
+                      {sendError && sendingRow === null && (
+                        <p className="mt-1 text-xs text-destructive">{sendError}</p>
+                      )}
                     </td>
                   </tr>
                 );
