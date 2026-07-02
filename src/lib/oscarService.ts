@@ -167,10 +167,21 @@ export function streamIntake(
   };
 }
 
-export async function sendAcknowledgementDraft(input: {
+export interface AckRecipient {
   toEmail: string;
   firstName: string;
   assessment: "private" | "therapist";
-}): Promise<void> {
-  await postJson<{ ok: boolean }>("/api/email/draft", input);
+  womensClinic?: boolean;
+}
+
+export async function sendAcknowledgements(
+  recipients: AckRecipient[],
+): Promise<{ sent: number; failed: string[] }> {
+  return postJson<{ sent: number; failed: string[] }>("/api/email/send", { recipients });
+}
+
+export async function createAcknowledgementDrafts(
+  recipients: AckRecipient[],
+): Promise<{ created: number; failed: string[] }> {
+  return postJson<{ created: number; failed: string[] }>("/api/email/draft-batch", { recipients });
 }

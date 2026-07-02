@@ -7,7 +7,7 @@ import {
   parseMsg,
   submitIntake,
   streamIntake,
-  sendAcknowledgementDraft,
+  createAcknowledgementDrafts,
   type JobResult,
   type OscarSession,
 } from "@/lib/oscarService";
@@ -503,7 +503,7 @@ function Index() {
           />
           <DashboardCard
             title="Send acknowledgement email to the patients listed below"
-            subtitle="Acknowledgement wording differs by assessment type (Regular vs Therapist-Supported)."
+            subtitle="Tick patients, then Draft Emails — creates Outlook drafts from the correct clinic address (Adult ADHD Centre or ADHD Centre for Women), with the right PDF, for you to review and Send."
             headers={["First Name", "Email Address", "Province", "Assessment Type"]}
             rows={doneItems}
             getRow={schedulingRow}
@@ -511,15 +511,16 @@ function Index() {
             onClear={clearAll}
             onDeleteRow={deleteRow}
             copyAllLabel="Copy All Rows"
-            onSendEmail={async (r) => {
-              if (!r.data) return;
-              const { email, firstName, assessment, womensClinic } = r.data;
-              if (womensClinic || !assessment || !email) return;
-              await sendAcknowledgementDraft({
-                toEmail: email,
-                firstName,
-                assessment,
-              });
+            onDraftBatch={async (rows) => {
+              const recipients = rows
+                .filter((r) => r.data && r.data.assessment && r.data.email)
+                .map((r) => ({
+                  toEmail: r.data!.email,
+                  firstName: r.data!.firstName,
+                  assessment: r.data!.assessment as "private" | "therapist",
+                  womensClinic: r.data!.womensClinic,
+                }));
+              return createAcknowledgementDrafts(recipients);
             }}
           />
         </section>
@@ -741,7 +742,7 @@ function DashboardCard({
   onClear,
   onDeleteRow,
   copyAllLabel,
-  onSendEmail,
+  onDraftBatch,
 }: {
   title: string;
   subtitle: string;
@@ -753,13 +754,19 @@ function DashboardCard({
   onClear: () => void;
   onDeleteRow: (id: string) => void;
   copyAllLabel: string;
-  onSendEmail?: (r: BatchItem) => Promise<void>;
+  onDraftBatch?: (rows: BatchItem[]) => Promise<{ created: number }>;
 }) {
   const [copiedRow, setCopiedRow] = useState<string | null>(null);
   const [copiedAll, setCopiedAll] = useState(false);
-  const [sentRow, setSentRow] = useState<string | null>(null);
-  const [sendingRow, setSendingRow] = useState<string | null>(null);
-  const [sendError, setSendError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [sending, setSending] = useState(false);
+  const [sendStatus, setSendStatus] = useState<string | null>(null);
+
+  const hasSelect = !!onDraftBatch;
+  const isEligible = (r: BatchItem) => !!(r.data && r.data.assessment && r.data.email);
+  const eligibleRows = rows.filter(isEligible);
+  const selectedRows = eligibleRows.filter((r) => selected.has(r.id));
+  const allSelected = eligibleRows.length > 0 && selectedRows.length === eligibleRows.length;
 
   const copyRow = async (r: BatchItem) => {
     await navigator.clipboard.writeText((getCopyRow ?? getRow)(r).join("\t"));
@@ -772,18 +779,67 @@ function DashboardCard({
     setTimeout(() => setCopiedAll(false), 1500);
   };
 
+  const toggleRow = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const toggleAll = () =>
+    setSelected(allSelected ? new Set() : new Set(eligibleRows.map((r) => r.id)));
+
+  const sendSelected = async () => {
+    if (!onDraftBatch || selectedRows.length === 0) return;
+    const n = selectedRows.length;
+    if (
+      !window.confirm(
+        `Create ${n} draft email${n > 1 ? "s" : ""} in Outlook (from the correct clinic address)? ` +
+          `Nothing is sent — you review each draft and click Send yourself.`,
+      )
+    )
+      return;
+    setSending(true);
+    setSendStatus(null);
+    try {
+      const res = await onDraftBatch(selectedRows);
+      setSendStatus(
+        `Created ${res.created} draft${res.created === 1 ? "" : "s"} in Outlook — review & click Send in each ✓`,
+      );
+      setSelected(new Set());
+    } catch (e: any) {
+      setSendStatus(`Failed: ${e?.message ?? "could not create drafts"}`);
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
     <div className="rounded-xl border bg-card">
       <div className="flex items-start justify-between gap-2 border-b px-4 py-3">
         <div>
           <h2 className="text-base font-semibold">{title}</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>
+          {hasSelect && sendStatus && (
+            <p className="mt-1 text-xs font-medium text-primary">{sendStatus}</p>
+          )}
         </div>
         <div className="flex shrink-0 gap-2">
+          {hasSelect && (
+            <button
+              onClick={() => void sendSelected()}
+              disabled={selectedRows.length === 0 || sending}
+              className="rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {sending
+                ? "Creating…"
+                : `Draft Emails${selectedRows.length ? ` (${selectedRows.length})` : ""}`}
+            </button>
+          )}
           <button
             onClick={copyAll}
             disabled={rows.length === 0}
-            className="rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-md border px-3 py-2 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
           >
             {copiedAll ? "Copied" : copyAllLabel}
           </button>
@@ -800,6 +856,17 @@ function DashboardCard({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/40 text-left text-xs uppercase tracking-wider text-muted-foreground">
+              {hasSelect && (
+                <th className="w-8 px-3 py-2">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                    disabled={eligibleRows.length === 0}
+                    aria-label="Select all patients"
+                  />
+                </th>
+              )}
               {headers.map((h) => (
                 <th key={h} className="px-3 py-2 font-semibold">
                   {h}
@@ -812,7 +879,7 @@ function DashboardCard({
             {rows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={headers.length + 1}
+                  colSpan={headers.length + 1 + (hasSelect ? 1 : 0)}
                   className="px-3 py-6 text-center text-sm text-muted-foreground"
                 >
                   No entries yet.
@@ -822,11 +889,24 @@ function DashboardCard({
               rows.map((r) => {
                 const cells = getRow(r);
                 const flag = r.outcome !== "found" && r.outcome !== "created";
+                const eligible = isEligible(r);
                 return (
                   <tr
                     key={r.id}
                     className={`border-b last:border-0 ${flag ? "bg-warning/10" : ""}`}
                   >
+                    {hasSelect && (
+                      <td className="px-3 py-2 align-top">
+                        {eligible && (
+                          <input
+                            type="checkbox"
+                            checked={selected.has(r.id)}
+                            onChange={() => toggleRow(r.id)}
+                            aria-label={`Select ${r.data?.firstName ?? "patient"}`}
+                          />
+                        )}
+                      </td>
+                    )}
                     {cells.map((c, i) => (
                       <td
                         key={i}
@@ -845,27 +925,6 @@ function DashboardCard({
                         >
                           {copiedRow === r.id ? "Copied" : "Copy Row"}
                         </button>
-                        {onSendEmail && r.data && !r.data.womensClinic && r.data.assessment && r.data.email && (
-                          <button
-                            disabled={sendingRow === r.id}
-                            onClick={async () => {
-                              setSendError(null);
-                              setSendingRow(r.id);
-                              try {
-                                await onSendEmail(r);
-                                setSentRow(r.id);
-                                setTimeout(() => setSentRow((s) => s === r.id ? null : s), 3000);
-                              } catch (e: any) {
-                                setSendError(e?.message ?? "Failed to open email draft.");
-                              } finally {
-                                setSendingRow(null);
-                              }
-                            }}
-                            className="rounded border px-2 py-1 text-xs bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50"
-                          >
-                            {sendingRow === r.id ? "Opening…" : sentRow === r.id ? "Draft opened ✓" : "Send Email"}
-                          </button>
-                        )}
                         <button
                           onClick={() => onDeleteRow(r.id)}
                           className="rounded border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-destructive"
@@ -874,9 +933,6 @@ function DashboardCard({
                           Delete
                         </button>
                       </div>
-                      {sendError && sendingRow === null && (
-                        <p className="mt-1 text-xs text-destructive">{sendError}</p>
-                      )}
                     </td>
                   </tr>
                 );
