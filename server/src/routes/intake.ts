@@ -16,6 +16,7 @@ const intakeSchema = z.object({
   email: z.string().min(3, "An email address is required to search OSCAR."),
   firstName: z.string().default(""),
   lastName: z.string().default(""),
+  preferredName: z.string().optional(),
   phone: z.string().optional(),
   dob: z.string().optional(),
   province: z.string().optional(),

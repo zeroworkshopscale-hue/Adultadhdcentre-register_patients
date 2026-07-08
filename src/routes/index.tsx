@@ -116,6 +116,7 @@ function runEmail(
       email: ext.email,
       firstName: ext.firstName,
       lastName: ext.lastName,
+      preferredName: ext.preferredName || undefined,
       phone: ext.phone || undefined,
       dob: ext.dob || undefined,
       province: ext.province || undefined,
@@ -516,7 +517,9 @@ function Index() {
                 .filter((r) => r.data && r.data.assessment && r.data.email)
                 .map((r) => ({
                   toEmail: r.data!.email,
-                  firstName: r.data!.firstName,
+                  // Greet by the preferred/nickname when one was given (e.g.
+                  // "Yuning (Renee) Liang" -> "Dear Renee"), else the legal first name.
+                  firstName: r.data!.preferredName || r.data!.firstName,
                   assessment: r.data!.assessment as "private" | "therapist",
                   womensClinic: r.data!.womensClinic,
                 }));
@@ -754,13 +757,14 @@ function DashboardCard({
   onClear: () => void;
   onDeleteRow: (id: string) => void;
   copyAllLabel: string;
-  onDraftBatch?: (rows: BatchItem[]) => Promise<{ created: number }>;
+  onDraftBatch?: (rows: BatchItem[]) => Promise<{ created: number; note?: string }>;
 }) {
   const [copiedRow, setCopiedRow] = useState<string | null>(null);
   const [copiedAll, setCopiedAll] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sending, setSending] = useState(false);
   const [sendStatus, setSendStatus] = useState<string | null>(null);
+  const [sendNote, setSendNote] = useState<string | null>(null);
 
   const hasSelect = !!onDraftBatch;
   const isEligible = (r: BatchItem) => !!(r.data && r.data.assessment && r.data.email);
@@ -801,11 +805,13 @@ function DashboardCard({
       return;
     setSending(true);
     setSendStatus(null);
+    setSendNote(null);
     try {
       const res = await onDraftBatch(selectedRows);
       setSendStatus(
         `Created ${res.created} draft${res.created === 1 ? "" : "s"} in Outlook — review & click Send in each ✓`,
       );
+      setSendNote(res.note ?? null);
       setSelected(new Set());
     } catch (e: any) {
       setSendStatus(`Failed: ${e?.message ?? "could not create drafts"}`);
@@ -822,6 +828,9 @@ function DashboardCard({
           <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>
           {hasSelect && sendStatus && (
             <p className="mt-1 text-xs font-medium text-primary">{sendStatus}</p>
+          )}
+          {hasSelect && sendNote && (
+            <p className="mt-1 text-xs font-medium text-warning-foreground">{sendNote}</p>
           )}
         </div>
         <div className="flex shrink-0 gap-2">

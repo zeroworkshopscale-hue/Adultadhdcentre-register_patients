@@ -59,6 +59,7 @@ export interface IntakeInput {
   email: string;
   firstName: string;
   lastName: string;
+  preferredName?: string;
   phone?: string;
   dob?: string;
   province?: string;
@@ -176,12 +177,16 @@ export interface AckRecipient {
 
 export async function sendAcknowledgements(
   recipients: AckRecipient[],
-): Promise<{ sent: number; failed: string[] }> {
-  return postJson<{ sent: number; failed: string[] }>("/api/email/send", { recipients });
+): Promise<{ sent: number; failed: string[]; note?: string }> {
+  return postJson<{ sent: number; failed: string[]; note?: string }>("/api/email/send", {
+    recipients,
+  });
 }
 
 export async function createAcknowledgementDrafts(
   recipients: AckRecipient[],
-): Promise<{ created: number; failed: string[] }> {
-  return postJson<{ created: number; failed: string[] }>("/api/email/draft-batch", { recipients });
+): Promise<{ created: number; failed: string[]; note?: string }> {
+  return postJson<{ created: number; failed: string[]; note?: string }>("/api/email/draft-batch", {
+    recipients,
+  });
 }

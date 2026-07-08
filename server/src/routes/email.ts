@@ -151,7 +151,7 @@ function buildItems(recipients: z.infer<typeof recipientSchema>[]): {
 function runBatch(
   items: Item[],
   action: "save" | "send",
-): Promise<{ ok: number; fail: string[] }> {
+): Promise<{ ok: number; fail: string[]; clean: number; onBehalf: number }> {
   const stamp = Date.now();
   const tmpJson = path.join(os.tmpdir(), `ack-${action}-${stamp}.json`);
   const tmpPs = path.join(os.tmpdir(), `ack-${action}-${stamp}.ps1`);
@@ -173,20 +173,40 @@ try {
 $ErrorActionPreference = 'Stop'
 $data = Get-Content -Raw -LiteralPath '${escPS(tmpJson)}' | ConvertFrom-Json
 $outlook = New-Object -ComObject Outlook.Application
-$ok = 0; $fail = @()
+
+# Cache resolved Outlook accounts (by SMTP address) so each recipient can use
+# the clean "Send As" method when available, falling back to "Send on Behalf"
+# (shows "X on behalf of Y" in the sent item) only if Send As isn't granted.
+$acctCache = @{}
+function Resolve-Account($smtp) {
+  if ($acctCache.ContainsKey($smtp)) { return $acctCache[$smtp] }
+  $found = $null
+  foreach ($a in $outlook.Session.Accounts) { try { if ($a.SmtpAddress -ieq $smtp) { $found = $a; break } } catch {} }
+  $acctCache[$smtp] = $found
+  return $found
+}
+
+$ok = 0; $fail = @(); $clean = 0; $onBehalf = 0
 foreach ($it in $data.items) {
   try {
     $m = $outlook.CreateItem(0)
     $m.To = $it.to
     $m.Subject = $it.subject
     $m.HTMLBody = $it.body
-    $m.SentOnBehalfOfName = $it.fromAccount
+    $acct = Resolve-Account $it.fromAccount
+    $usedCleanSend = $false
+    if ($acct -ne $null) {
+      $m.SendUsingAccount = $acct
+      try { if ($m.SendUsingAccount -ne $null -and $m.SendUsingAccount.SmtpAddress -ieq $it.fromAccount) { $usedCleanSend = $true } } catch {}
+    }
+    if (-not $usedCleanSend) { $m.SentOnBehalfOfName = $it.fromAccount }
     $m.Attachments.Add($it.pdf) | Out-Null
     ${finish}
     $ok++
+    if ($usedCleanSend) { $clean++ } else { $onBehalf++ }
   } catch { $fail += $it.to }
 }${openDrafts}
-[pscustomobject]@{ ok = $ok; fail = @($fail) } | ConvertTo-Json -Compress
+[pscustomobject]@{ ok = $ok; fail = @($fail); clean = $clean; onBehalf = $onBehalf } | ConvertTo-Json -Compress
 `.trim();
   writeFileSync(tmpPs, script, "utf8");
 
@@ -202,10 +222,10 @@ foreach ($it in $data.items) {
     ({ stdout }) => {
       cleanup();
       const line = stdout.trim().split(/\r?\n/).filter(Boolean).pop() ?? "{}";
-      let res: { ok?: number; fail?: string[] | string | null } = {};
+      let res: { ok?: number; fail?: string[] | string | null; clean?: number; onBehalf?: number } = {};
       try { res = JSON.parse(line); } catch {}
       const fail = Array.isArray(res.fail) ? res.fail : res.fail ? [String(res.fail)] : [];
-      return { ok: res.ok ?? 0, fail };
+      return { ok: res.ok ?? 0, fail, clean: res.clean ?? 0, onBehalf: res.onBehalf ?? 0 };
     },
     (err) => {
       cleanup();
@@ -228,7 +248,16 @@ emailRouter.post("/draft-batch", async (req, res) => {
   }
   try {
     const r = await runBatch(built.items!, "save");
-    res.json({ ok: true, created: r.ok, failed: r.fail });
+    res.json({
+      ok: true,
+      created: r.ok,
+      failed: r.fail,
+      note:
+        r.onBehalf > 0
+          ? `${r.onBehalf} draft(s) will show as "sent on behalf of" the clinic address (this account has ` +
+            `"Send on Behalf" but not "Send As" permission — ask IT to grant "Send As" to remove that text).`
+          : undefined,
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message || "Draft creation failed." });
   }
@@ -248,7 +277,16 @@ emailRouter.post("/send", async (req, res) => {
   }
   try {
     const r = await runBatch(built.items!, "send");
-    res.json({ ok: true, sent: r.ok, failed: r.fail });
+    res.json({
+      ok: true,
+      sent: r.ok,
+      failed: r.fail,
+      note:
+        r.onBehalf > 0
+          ? `${r.onBehalf} email(s) were sent showing "on behalf of" the clinic address (this account has ` +
+            `"Send on Behalf" but not "Send As" permission — ask IT to grant "Send As" to remove that text).`
+          : undefined,
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message || "Send failed." });
   }

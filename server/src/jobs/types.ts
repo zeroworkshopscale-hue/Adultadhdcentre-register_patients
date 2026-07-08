@@ -32,6 +32,7 @@ export interface IntakeJobInput {
   email: string;
   firstName: string;
   lastName: string;
+  preferredName?: string;
   phone?: string;
   dob?: string;
   province?: string;

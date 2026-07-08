@@ -124,6 +124,7 @@ class JobQueue {
         const created = await client.createPatient({
           firstName: input.firstName,
           lastName: input.lastName,
+          preferredName: input.preferredName,
           email: input.email,
           phone: input.phone,
           dob: input.dob,

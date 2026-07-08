@@ -66,6 +66,8 @@ export type Assessment = "private" | "therapist" | null;
 export interface Extracted {
   firstName: string;
   lastName: string;
+  /** Preferred/nickname from a parenthetical in the name, e.g. "Yuning (Renee) Liang" -> "Renee". */
+  preferredName: string;
   email: string;
   phone: string;
   address: string;
@@ -98,8 +100,24 @@ const grab = (re: RegExp, text: string, group = 1): string => {
 function nameFromSubject(subject: string): string {
   const after = subject.match(/(?:assessment\s*request\s*for|request\s*for)\s+(.*)$/i);
   if (!after) return "";
-  const nm = after[1].match(/^([A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]+){0,2})/);
+  // Each extra "word" may also be a "(Nickname)" parenthetical, e.g.
+  // "... for Yuning (Renee) Liang" -> "Yuning (Renee) Liang".
+  const nm = after[1].match(
+    /^([A-Z][A-Za-z'\-]+(?:\s+(?:[A-Z][A-Za-z'\-]+|\([A-Za-z'\- ]+\))){0,2})/,
+  );
   return nm ? nm[1].trim() : "";
+}
+
+/**
+ * Split a "(Nickname)" parenthetical out of a full name, e.g.
+ *   "Yuning (Renee) Liang" -> { name: "Yuning Liang", preferred: "Renee" }
+ * Only the first parenthetical is treated as a preferred name.
+ */
+function extractPreferredName(full: string): { name: string; preferred: string } {
+  const m = full.match(/\(([^)]+)\)/);
+  const preferred = m ? m[1].trim() : "";
+  const name = full.replace(/\([^)]*\)/, " ").replace(/\s+/g, " ").trim();
+  return { name, preferred };
 }
 
 /**
@@ -314,24 +332,29 @@ export function extractFromEmail(raw: string): Extracted {
       text,
     );
 
-  // Name — try "Name:" labels, fall back to subject.
+  // Name — try "Name:" labels, fall back to subject. Character classes include
+  // "()" so a "(Nickname)" preferred-name parenthetical (e.g. "Yuning (Renee)
+  // Liang") is captured along with the rest of the name.
   let first = grab(/(?:first\s*name|given\s*name)\s*[:\-]\s*([A-Za-z' \-]+)/i, text);
   let last = grab(/(?:last\s*name|surname|family\s*name)\s*[:\-]\s*([A-Za-z' \-]+)/i, text);
+  let preferredName = "";
   if (!first || !last) {
     const full =
       // Inline "Name: value". Horizontal-space-only inside the label so it can't
       // span lines (e.g. "...same as Patient" + "Name" two lines down).
-      grab(/(?:patient[ \t]*name|client[ \t]*name|full[ \t]*name|\bname)[ \t]*[:\-][ \t]*([A-Za-z'\- ]{3,60})/i, text) ||
+      grab(/(?:patient[ \t]*name|client[ \t]*name|full[ \t]*name|\bname)[ \t]*[:\-][ \t]*([A-Za-z'()\- ]{3,60})/i, text) ||
       // Label on its own line, value on the next line. The FIRST match wins,
       // which is the Patient Information section (always before any Billing /
       // Payer section), so a payer's name is never used as the patient's.
       grab(
-        /(?:patient[ \t]*legal[ \t]*name|legal[ \t]*name|patient[ \t]*name|full[ \t]*name|\bname)[ \t]*[:\-]?[ \t]*\r?\n[ \t]*([A-Za-z][A-Za-z'.\- ]{2,60})/i,
+        /(?:patient[ \t]*legal[ \t]*name|legal[ \t]*name|patient[ \t]*name|full[ \t]*name|\bname)[ \t]*[:\-]?[ \t]*\r?\n[ \t]*([A-Za-z][A-Za-z'.()\- ]{2,60})/i,
         text,
       ) ||
       nameFromSubject(subject);
     if (full) {
-      const parts = full.trim().split(/\s+/);
+      const { name: cleanFull, preferred } = extractPreferredName(full);
+      preferredName = preferred;
+      const parts = cleanFull.trim().split(/\s+/);
       if (!first) first = parts[0] ?? "";
       if (!last) last = parts.slice(1).join(" ");
     }
@@ -370,6 +393,7 @@ export function extractFromEmail(raw: string): Extracted {
   return {
     firstName: first.trim(),
     lastName: last.trim(),
+    preferredName: preferredName.trim(),
     email: email.trim(),
     phone,
     address: address.trim(),

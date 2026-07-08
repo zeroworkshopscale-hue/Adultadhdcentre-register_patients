@@ -44,6 +44,8 @@ export type SearchResult =
 export interface NewPatientInput {
   firstName: string;
   lastName: string;
+  /** Preferred/nickname from a parenthetical in the name, e.g. "Renee" for "Yuning (Renee) Liang". */
+  preferredName?: string;
   email: string;
   phone?: string;
   dob?: string; // YYYY-MM-DD (already validated by the extractor)
@@ -329,6 +331,10 @@ export class OscarClient {
       ["hc_type", "OT"],
     ];
     if (genderId) pairs.push(["gender", genderId]);
+    // OSCAR's classic demographic form has an "alias" field for a preferred /
+    // nickname (e.g. "Renee" for "Yuning (Renee) Liang"). Setting it is a
+    // no-op if the field isn't present on a given OSCAR instance.
+    if (input.preferredName) pairs.push(["alias", input.preferredName]);
     if (provinceCode) pairs.push(["province", provinceCode]);
     if (input.alert) pairs.push(["bookingAlert", input.alert]);
     const addr = splitAddress(input.address ?? "", input.province);
