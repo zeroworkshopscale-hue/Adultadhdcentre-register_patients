@@ -200,6 +200,12 @@ foreach ($it in $data.items) {
       try { if ($m.SendUsingAccount -ne $null -and $m.SendUsingAccount.SmtpAddress -ieq $it.fromAccount) { $usedCleanSend = $true } } catch {}
     }
     if (-not $usedCleanSend) { $m.SentOnBehalfOfName = $it.fromAccount }
+    # Force replies back to the clinic address, whatever account actually sends.
+    try {
+      while ($m.ReplyRecipients.Count -gt 0) { $m.ReplyRecipients.Remove(1) }
+      $rr = $m.ReplyRecipients.Add($it.fromAccount)
+      try { $rr.Resolve() | Out-Null } catch {}
+    } catch {}
     $m.Attachments.Add($it.pdf) | Out-Null
     ${finish}
     $ok++

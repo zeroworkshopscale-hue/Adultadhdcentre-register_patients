@@ -8,6 +8,8 @@ import {
   submitIntake,
   streamIntake,
   createAcknowledgementDrafts,
+  sendAcknowledgements,
+  type AckRecipient,
   type JobResult,
   type OscarSession,
 } from "@/lib/oscarService";
@@ -93,6 +95,19 @@ function alertFor(assessment: Extracted["assessment"], womensClinic: boolean): s
   if (assessment === "therapist") return `Therapist Supported ADHD Assessment${suffix}`;
   if (assessment === "private") return `Private ADHD${suffix}`;
   return "";
+}
+
+// Map processed rows to acknowledgement-email recipients. Greets by the
+// preferred/nickname when present (e.g. "Yuning (Renee) Liang" -> "Dear Renee").
+function ackRecipients(rows: BatchItem[]): AckRecipient[] {
+  return rows
+    .filter((r) => r.data && r.data.assessment && r.data.email)
+    .map((r) => ({
+      toEmail: r.data!.email,
+      firstName: r.data!.preferredName || r.data!.firstName,
+      assessment: r.data!.assessment as "private" | "therapist",
+      womensClinic: r.data!.womensClinic,
+    }));
 }
 
 async function readFileText(file: File): Promise<string> {
@@ -504,7 +519,7 @@ function Index() {
           />
           <DashboardCard
             title="Send acknowledgement email to the patients listed below"
-            subtitle="Tick patients, then Draft Emails — creates Outlook drafts from the correct clinic address (Adult ADHD Centre or ADHD Centre for Women), with the right PDF, for you to review and Send."
+            subtitle="Tick patients, then Send Emails to send now (or Draft Only to review first). Each goes from the correct clinic address with the right PDF, and replies come back to the clinic (adhd@adultadhdcentre.com / hers@adhdcentreforwomen.com)."
             headers={["First Name", "Email Address", "Province", "Assessment Type"]}
             rows={doneItems}
             getRow={schedulingRow}
@@ -512,19 +527,8 @@ function Index() {
             onClear={clearAll}
             onDeleteRow={deleteRow}
             copyAllLabel="Copy All Rows"
-            onDraftBatch={async (rows) => {
-              const recipients = rows
-                .filter((r) => r.data && r.data.assessment && r.data.email)
-                .map((r) => ({
-                  toEmail: r.data!.email,
-                  // Greet by the preferred/nickname when one was given (e.g.
-                  // "Yuning (Renee) Liang" -> "Dear Renee"), else the legal first name.
-                  firstName: r.data!.preferredName || r.data!.firstName,
-                  assessment: r.data!.assessment as "private" | "therapist",
-                  womensClinic: r.data!.womensClinic,
-                }));
-              return createAcknowledgementDrafts(recipients);
-            }}
+            onDraftBatch={async (rows) => createAcknowledgementDrafts(ackRecipients(rows))}
+            onSendBatch={async (rows) => sendAcknowledgements(ackRecipients(rows))}
           />
         </section>
       </main>
@@ -746,6 +750,7 @@ function DashboardCard({
   onDeleteRow,
   copyAllLabel,
   onDraftBatch,
+  onSendBatch,
 }: {
   title: string;
   subtitle: string;
@@ -758,6 +763,7 @@ function DashboardCard({
   onDeleteRow: (id: string) => void;
   copyAllLabel: string;
   onDraftBatch?: (rows: BatchItem[]) => Promise<{ created: number; note?: string }>;
+  onSendBatch?: (rows: BatchItem[]) => Promise<{ sent: number; failed: string[]; note?: string }>;
 }) {
   const [copiedRow, setCopiedRow] = useState<string | null>(null);
   const [copiedAll, setCopiedAll] = useState(false);
@@ -820,6 +826,37 @@ function DashboardCard({
     }
   };
 
+  const sendNow = async () => {
+    if (!onSendBatch || selectedRows.length === 0) return;
+    const n = selectedRows.length;
+    if (
+      !window.confirm(
+        `Send ${n} acknowledgement email${n > 1 ? "s" : ""} to patients NOW?\n\n` +
+          `They go out from the clinic address, and replies come back to the clinic ` +
+          `(adhd@adultadhdcentre.com / hers@adhdcentreforwomen.com). This cannot be undone.`,
+      )
+    )
+      return;
+    setSending(true);
+    setSendStatus(null);
+    setSendNote(null);
+    try {
+      const res = await onSendBatch(selectedRows);
+      const failN = res.failed?.length ?? 0;
+      setSendStatus(
+        failN
+          ? `Sent ${res.sent}; ${failN} failed (${res.failed.join(", ")})`
+          : `Sent ${res.sent} email${res.sent === 1 ? "" : "s"} ✓`,
+      );
+      setSendNote(res.note ?? null);
+      setSelected(new Set());
+    } catch (e: any) {
+      setSendStatus(`Failed: ${e?.message ?? "could not send"}`);
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
     <div className="rounded-xl border bg-card">
       <div className="flex items-start justify-between gap-2 border-b px-4 py-3">
@@ -834,15 +871,26 @@ function DashboardCard({
           )}
         </div>
         <div className="flex shrink-0 gap-2">
-          {hasSelect && (
+          {hasSelect && onSendBatch && (
             <button
-              onClick={() => void sendSelected()}
+              onClick={() => void sendNow()}
               disabled={selectedRows.length === 0 || sending}
               className="rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {sending
-                ? "Creating…"
-                : `Draft Emails${selectedRows.length ? ` (${selectedRows.length})` : ""}`}
+                ? "Sending…"
+                : `Send Emails${selectedRows.length ? ` (${selectedRows.length})` : ""}`}
+            </button>
+          )}
+          {hasSelect && (
+            <button
+              onClick={() => void sendSelected()}
+              disabled={selectedRows.length === 0 || sending}
+              className="rounded-md border px-3 py-2 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {sending
+                ? "…"
+                : `Draft Only${selectedRows.length ? ` (${selectedRows.length})` : ""}`}
             </button>
           )}
           <button
