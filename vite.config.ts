@@ -7,6 +7,11 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
+  // Force-enable nitro so `vite build` (with NITRO_PRESET=node-server) produces a
+  // complete, runnable Node server in .output/ — used to serve the app in the
+  // installed desktop build instead of the slow vite dev server. Build-only:
+  // this does not affect `vite dev`.
+  nitro: true,
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
