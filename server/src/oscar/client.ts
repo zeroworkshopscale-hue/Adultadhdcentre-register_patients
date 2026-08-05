@@ -228,7 +228,9 @@ export class OscarClient {
       `&limit1=0&limit2=25&displaymode=Search&ptstatus=active`;
 
     try {
-      await page.goto(url, { waitUntil: "networkidle" });
+      // Classic search results are server-rendered, so they are present as soon
+      // as the DOM loads — no need to wait for full network idle.
+      await page.goto(url, { waitUntil: "domcontentloaded" });
     } catch {
       log.warn("OSCAR search timed out", { mode, keyword });
       return [];
@@ -252,7 +254,7 @@ export class OscarClient {
     await page.goto(
       `${this.classicUrl("/demographic/demographiccontrol.jsp")}` +
         `?demographic_no=${encodeURIComponent(demo)}&displaymode=edit&dboperation=search_detail`,
-      { waitUntil: "networkidle" },
+      { waitUntil: "domcontentloaded" },
     );
     await page.waitForSelector("input[name='last_name']", {
       timeout: this.opts.timeoutMs,
@@ -304,8 +306,11 @@ export class OscarClient {
    */
   async createPatient(input: NewPatientInput): Promise<DemographicDetails> {
     const page = this.pg;
+    // "domcontentloaded" (not "networkidle"): OSCAR keeps background connections
+    // open so the page never reaches network idle, which made this time out. The
+    // waitForSelector below is what actually confirms the form is ready.
     await page.goto(this.classicUrl("/demographic/demographicaddarecordhtm.jsp"), {
-      waitUntil: "networkidle",
+      waitUntil: "domcontentloaded",
     });
     await page.waitForSelector("input[name='last_name']", {
       state: "visible",
@@ -365,7 +370,7 @@ export class OscarClient {
     page.on("dialog", onDialog);
     try {
       await page.locator("input[type='submit'][name='submit']").first().click();
-      await page.waitForLoadState("networkidle").catch(() => undefined);
+      await page.waitForLoadState("domcontentloaded").catch(() => undefined);
       await page.waitForTimeout(1500);
     } finally {
       page.off("dialog", onDialog);
